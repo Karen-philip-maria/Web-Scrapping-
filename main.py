@@ -6,7 +6,7 @@ def fetch_page(url):
     """Fetch and parse a single page."""
     try:
         response = requests.get(url)
-        response.raise_for_status()  # Raise an HTTPError for bad responses
+        response.raise_for_status()  
         soup = BeautifulSoup(response.text, "html.parser")
         return soup
     except requests.RequestException as e:
@@ -19,24 +19,22 @@ def parse_articles(soup):
     article_data = []
 
     for index, article in enumerate(articles):
-        print(f"Parsing article {index + 1}...")  # Debugging line
+        print(f"Parsing article {index + 1}...") 
 
         title_tag = article.find("h4", class_="card-title")
         title = title_tag.get_text(strip=True) if title_tag else "No title found"
 
-        # Extract the full content
         content_parts = []
         body = article.find("div", class_="card-body")
         if body:
             for element in body.find_all(["p", "div", "span"], recursive=True):
                 text = element.get_text(strip=True)
-                if text:  # Only add non-empty text
+                if text: 
                     content_parts.append(text)
         content = " ".join(content_parts).strip() if content_parts else "No content found"
 
-        print(f"Title: {title}")  # Debugging line
-        print(f"Content: {content[:200]}...")  # Print first 200 characters of content
-
+        print(f"Title: {title}")  
+        print(f"Content: {content[:200]}...") 
         article_data.append({
             'title': title,
             'content': content
@@ -69,14 +67,13 @@ def scrape_all_pages(base_url):
         articles = parse_articles(soup)
         
         if not articles:
-            # If no articles are found, stop pagination
             print(f"No more articles found on page {page_number}.")
             break
         
         save_articles_to_file(articles, page_number)
         
         page_number += 1
-        time.sleep(1)  # Optional: Add delay to avoid overwhelming the server
+        time.sleep(1)  
     
     print('All pages have been processed and saved.')
 
