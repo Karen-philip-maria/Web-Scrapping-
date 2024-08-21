@@ -1,90 +1,77 @@
 import requests
-from bs4 import BeautifulSoup
-import time
+import pdfplumber
+import mysql.connector
+from io import BytesIO
 
-def fetch_page(url):
-    """Fetch and parse a single page."""
+def fetch_pdf(url):
+    """Fetch and read a PDF file from a URL."""
     try:
         response = requests.get(url)
-        response.raise_for_status()  
-        soup = BeautifulSoup(response.text, "html.parser")
-        return soup
+        response.raise_for_status()
+        return BytesIO(response.content)
     except requests.RequestException as e:
         print(f"Error fetching {url}: {e}")
         return None
 
-def parse_articles(soup):
-    """Extract all article data from the soup object, ensuring no data is left out."""
-    articles = soup.find_all("article", class_="col-sm-6")
-    article_data = []
+def extract_text_from_pdf(pdf_file):
+    """Extract text from the PDF file."""
+    extracted_text = ""
+    with pdfplumber.open(pdf_file) as pdf:
+        for page in pdf.pages:
+            extracted_text += page.extract_text() or ""
+    return extracted_text
 
-    for index, article in enumerate(articles):
-        print(f"Parsing article {index + 1}...") 
+def parse_text(text):
+    """Parse and categorize text extracted from the PDF."""
+    extracted_info = []
+    lines = text.split('\n')
+    for line in lines:
+        if 'tariff' in line.lower():  # Adjust this line based on actual content
+            extracted_info.append({
+                'title': line,
+                'content': line
+            })
+    return extracted_info
 
-        title_tag = article.find("h4", class_="card-title")
-        title = title_tag.get_text(strip=True) if title_tag else "No title found"
+def insert_tariffs_to_db(tariffs):
+    """Insert tariff information into the database."""
+    connection = None
+    cursor = None
+    try:
+        connection = mysql.connector.connect(
+            host='localhost',
+            user='root',
+            password='password',  # Ensure this password is correct
+            database='trade_documents'
+        )
+        cursor = connection.cursor()
+        for tariff in tariffs:
+            title = tariff['title']
+            content = tariff['content']
+            cursor.execute(
+                "INSERT INTO `tariffs` (`title`, `content`) VALUES (%s, %s)",
+                (title, content)
+            )
+        connection.commit()
+    except mysql.connector.Error as err:
+        print(f"Error: {err}")
+    finally:
+        if cursor is not None:
+            cursor.close()
+        if connection is not None and connection.is_connected():
+            connection.close()
 
-        content_parts = []
-        body = article.find("div", class_="card-body")
-        if body:
-            for element in body.find_all(["p", "div", "span"], recursive=True):
-                text = element.get_text(strip=True)
-                if text: 
-                    content_parts.append(text)
-        content = " ".join(content_parts).strip() if content_parts else "No content found"
-
-        print(f"Title: {title}")  
-        print(f"Content: {content[:200]}...") 
-        article_data.append({
-            'title': title,
-            'content': content
-        })
-
-    return article_data
-
-def save_articles_to_file(articles, page_number):
-    """Save collected articles for a specific page to a file."""
-    filename = f"Articles_Page_{page_number}.txt"
-    with open(filename, "w", encoding='UTF-8') as f:
-        for i, article in enumerate(articles, start=1):
-            title = article['title']
-            content = article['content']
-            f.write(f"Article {i}: \n Title : {title} \n Content : \n{content}\n\n")
-            print(f"Page {page_number} - Article {i}: \n Title : {title} \n Content : \n{content}\n")
-
-def scrape_all_pages(base_url):
-    """Scrape data from all pages one at a time until no more articles are found."""
-    page_number = 1
-    while True:
-        url = f"{base_url}?page={page_number}"
-        print(f"Fetching page {page_number}...")
-        soup = fetch_page(url)
-        
-        if soup is None:
-            print(f"Failed to retrieve page {page_number}.")
-            break
-        
-        articles = parse_articles(soup)
-        
-        if not articles:
-            print(f"No more articles found on page {page_number}.")
-            break
-        
-        save_articles_to_file(articles, page_number)
-        
-        page_number += 1
-        time.sleep(1)  
-    
-    print('All pages have been processed and saved.')
+def scrape_pdf(url):
+    """Fetch, extract, and insert data from a PDF."""
+    pdf_file = fetch_pdf(url)
+    if pdf_file is None:
+        print("Failed to retrieve the PDF file.")
+        return
+    text = extract_text_from_pdf(pdf_file)
+    tariffs = parse_text(text)
+    insert_tariffs_to_db(tariffs)
+    print('PDF has been processed and data has been inserted into the database.')
 
 if __name__ == "__main__":
-    base_url = "https://ura.go.ug/en/category/imports-exports/customs-enforcements/"
-    scrape_all_pages(base_url)
-
-
-
-
-
-
-
-
+    pdf_url = "https://kra.go.ke/images/publications/EAC-CET-2022-VERSION-30TH-JUNE-Fn.pdf"
+    scrape_pdf(pdf_url)
